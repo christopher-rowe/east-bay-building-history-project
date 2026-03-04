@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Alameda County Building History Project</title>
+<meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.1.2/mapbox-gl.js"></script>
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.1.2/mapbox-gl.css" rel="stylesheet" />
+<script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v5.0.0/mapbox-gl-geocoder.min.js"></script>
+<link href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v5.0.0/mapbox-gl-geocoder.css" rel="stylesheet" />
+<style>
+body { margin:0; padding:0; }
+#map { position:absolute; top:0; bottom:0; width:100%; }
+#wiki-toggle {
+    position: absolute;
+    bottom: 30px;
+    left: 10px;
+    z-index: 1;
+    background: white;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    padding: 6px 12px;
+    font-family: sans-serif;
+    font-size: 13px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+}
+#wiki-toggle input { cursor: pointer; margin: 0; }
+
+#legend {
+    position: absolute;
+    bottom: 30px;
+    right: 10px;
+    z-index: 1;
+    background: white;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    padding: 10px 14px;
+    font-family: sans-serif;
+    font-size: 12px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+    line-height: 1.4;
+}
+#legend h4 {
+    margin: 0 0 8px 0;
+    font-size: 12px;
+    font-weight: bold;
+}
+#legend-gradient {
+    width: 160px;
+    height: 12px;
+    border-radius: 2px;
+    background: linear-gradient(to right, #440154, #3b528b, #21918c, #5ec962, #a8d84e, #fde725);
+    margin-bottom: 4px;
+}
+#legend-labels {
+    display: flex;
+    justify-content: space-between;
+    color: #555;
+}
+
+#intro-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+#intro-box {
+    background: white;
+    border-radius: 8px;
+    padding: 36px 40px;
+    max-width: 480px;
+    width: 90%;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+    font-family: sans-serif;
+}
+#intro-box h1 {
+    margin: 0 0 12px 0;
+    font-size: 1.4em;
+    line-height: 1.3;
+}
+#intro-box p {
+    margin: 0 0 24px 0;
+    font-size: 0.95em;
+    color: #444;
+    line-height: 1.6;
+}
+#intro-box ul {
+    margin: 0 0 24px 0;
+    padding-left: 18px;
+    font-size: 0.9em;
+    color: #444;
+    line-height: 1.8;
+}
+#intro-close {
+    display: block;
+    width: 100%;
+    padding: 10px;
+    background: #1b1f3b;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    font-size: 1em;
+    cursor: pointer;
+}
+#intro-close:hover { background: #2c3e6d; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div id="legend">
+    <h4>Year Built</h4>
+    <div id="legend-gradient"></div>
+    <div id="legend-labels">
+        <span>1895</span>
+        <span>1940</span>
+        <span>1980</span>
+        <span>2011+</span>
+    </div>
+</div>
+
+<div id="intro-overlay">
+    <div id="intro-box">
+        <h1>Welcome to the Alameda County Building History Project</h1>
+        <p>This map visualizes buildings in Alameda County along a gradient of when they were built, permitting you to take a journey through the history of cities and neighborhoods.</p>
+        <ul>
+            <li>Click any building to see when it was built and its address</li>
+            <li>Toggle <strong>Show LocalWiki Entries</strong> to explore community-written descriptions of local places, sourced from LocalWiki.org</li>
+        </ul>
+        <button id="intro-close">Explore the map</button>
+    </div>
+</div>
+<label id="wiki-toggle">
+    <input type="checkbox" id="wiki-checkbox">
+    Show LocalWiki Entries
+</label>
+
+<script>
+mapboxgl.accessToken = 'pk.eyJ1Ijoib2FrbGFuZC1tYXAtbWFrZXIiLCJhIjoiY21tMDU2eWpxMGV3djNob2U5Y2VndGR1ayJ9.F0DJuCifU0eyS1uqhF5i5Q';
+
+const map = new mapboxgl.Map({
+    container: 'map',
+    style: 'mapbox://styles/oakland-map-maker/cmm8rpfjv00er01su3jp64swm',
+    center: [-122.233, 37.800],
+    zoom: 12,
+    minZoom: 10,
+    maxZoom: 18,
+    pitch: 0,
+    bearing: 0,
+    renderWorldCopies: false,
+    dragRotate: false,
+    touchZoomRotate: false
+});
+
+// Restrict to Alameda County
+const ALAMEDA_BOUNDS = [[-122.38, 37.40], [-121.46, 37.91]];
+map.setMaxBounds(ALAMEDA_BOUNDS);
+
+// Address search
+map.addControl(new MapboxGeocoder({
+    accessToken: mapboxgl.accessToken,
+    mapboxgl: mapboxgl,
+    bbox: [-122.38, 37.40, -121.46, 37.91],
+    placeholder: 'Search for an address...'
+}));
+
+// Geolocate button
+map.addControl(new mapboxgl.GeolocateControl({
+    positionOptions: { enableHighAccuracy: true },
+    trackUserLocation: true
+}));
+
+// --------------------------------------------------
+// BUILDING CLICK INTERACTION
+// --------------------------------------------------
+
+map.on('load', () => {
+
+    // --------------------------------------------------
+    // LAYER AESTHETICS
+    // Defined here so changes take effect immediately on reload,
+    // bypassing Mapbox Studio's publish propagation delay.
+    // --------------------------------------------------
+
+    // Buildings: color gradient by year_built
+    map.setPaintProperty('buildings-with-year', 'fill-color', [
+        'case',
+        ['==', ['get', 'year_built'], null], '#d9d9d9',
+        [
+            'interpolate', ['linear'], ['to-number', ['get', 'year_built']],
+            1895, '#440154',
+            1920, '#3b528b',
+            1940, '#21918c',
+            1960, '#5ec962',
+            1980, '#a8d84e',
+            2000, '#fde725'
+        ]
+    ]);
+    map.setPaintProperty('buildings-with-year', 'fill-emissive-strength', 1);
+
+    // Wiki points: defined entirely in JS, bypassing Studio composite source
+    map.addSource('wiki-points-src', {
+        type: 'vector',
+        url: 'mapbox://oakland-map-maker.wiki-points'
+    });
+    map.addLayer({
+        id: 'wiki-points',
+        type: 'circle',
+        source: 'wiki-points-src',
+        'source-layer': 'wiki_points',
+        minzoom: 10,
+        layout: { 'visibility': 'none' },
+        paint: {
+            'circle-color': 'hsl(0, 90%, 55%)',
+            'circle-opacity': 0.7,
+            'circle-emissive-strength': 1
+        }
+    });
+
+    // --------------------------------------------------
+    // BUILDING CLICK INTERACTION
+    // --------------------------------------------------
+
+    const BUILDING_LAYER_ID = 'buildings-with-year';
+
+    map.on('click', BUILDING_LAYER_ID, (e) => {
+        const properties = e.features[0].properties;
+        const year = properties.year_built;
+        const address = properties.address || "";
+        const yearLabel = year ? `Built in ${year}` : "Year Built Not Available";
+
+        new mapboxgl.Popup()
+            .setLngLat(e.lngLat)
+            .setHTML(`
+                <div style="font-family: sans-serif; line-height:1.4;">
+                    <h3 style="margin:0 0 4px 0;">${yearLabel}</h3>
+                    ${address ? `<div>${address}</div>` : ''}
+                </div>
+            `)
+            .addTo(map);
+    });
+
+    map.on('mouseenter', BUILDING_LAYER_ID, () => {
+        map.getCanvas().style.cursor = 'pointer';
+    });
+
+    map.on('mouseleave', BUILDING_LAYER_ID, () => {
+        map.getCanvas().style.cursor = '';
+    });
+
+    // --------------------------------------------------
+    // WIKI POINTS LAYER
+    // --------------------------------------------------
+
+    const WIKI_LAYER_ID = 'wiki-points';
+
+    map.on('click', WIKI_LAYER_ID, (e) => {
+        const properties = e.features[0].properties;
+        const name = properties.name || "Unknown";
+        const preview = properties.preview || "";
+        const url = properties.external_url || "";
+
+        const container = document.createElement('div');
+        container.style.cssText = 'font-family:sans-serif;line-height:1.4;max-width:220px';
+
+        const heading = document.createElement('h3');
+        heading.style.cssText = 'margin:0 0 6px 0';
+        heading.textContent = name;
+        container.appendChild(heading);
+
+        if (preview) {
+            const p = document.createElement('p');
+            p.style.cssText = 'margin:0 0 8px 0;font-size:0.875em';
+            p.textContent = preview;
+            container.appendChild(p);
+        }
+
+        if (url) {
+            const a = document.createElement('a');
+            a.href = url;
+            a.target = '_blank';
+            a.rel = 'noopener';
+            a.textContent = 'Read more at LocalWiki';
+            container.appendChild(a);
+        }
+
+        new mapboxgl.Popup()
+            .setLngLat(e.lngLat)
+            .setDOMContent(container)
+            .addTo(map);
+    });
+
+    map.on('mouseenter', WIKI_LAYER_ID, () => {
+        map.getCanvas().style.cursor = 'pointer';
+    });
+
+    map.on('mouseleave', WIKI_LAYER_ID, () => {
+        map.getCanvas().style.cursor = '';
+    });
+
+    // --------------------------------------------------
+    // WIKI POINTS TOGGLE
+    // --------------------------------------------------
+
+    document.getElementById('intro-close').addEventListener('click', () => {
+        document.getElementById('intro-overlay').style.display = 'none';
+    });
+
+    document.getElementById('wiki-checkbox').addEventListener('change', (e) => {
+        map.setLayoutProperty(WIKI_LAYER_ID, 'visibility', e.target.checked ? 'visible' : 'none');
+    });
+
+});
+</script>
+
+</body>
+</html>
