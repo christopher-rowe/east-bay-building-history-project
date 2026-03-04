@@ -30,6 +30,11 @@ body { margin:0; padding:0; }
 }
 #wiki-toggle input { cursor: pointer; margin: 0; }
 
+@media (max-width: 480px) {
+    #wiki-toggle { bottom: 80px; }
+    #legend { bottom: 30px; right: auto; left: 10px; }
+}
+
 #legend {
     position: absolute;
     bottom: 30px;
@@ -155,9 +160,11 @@ const map = new mapboxgl.Map({
     pitch: 0,
     bearing: 0,
     renderWorldCopies: false,
-    dragRotate: false,
-    touchZoomRotate: false
+    dragRotate: false
 });
+
+// Disable rotation but keep pinch-to-zoom
+map.touchZoomRotate.disableRotation();
 
 // Restrict to Alameda County
 const ALAMEDA_BOUNDS = [[-122.38, 37.40], [-121.46, 37.91]];
